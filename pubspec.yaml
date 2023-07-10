@@ -1,0 +1,13 @@
+name: dart6502
+description: A 6502 simulator suitable for running Wozmon.
+version: 1.0.0
+repository: https://github.com/sma/dart6502
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+
+dev_dependencies:
+  lints: ^2.0.0
+  test: ^1.21.0
