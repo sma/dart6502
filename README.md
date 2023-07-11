@@ -269,7 +269,7 @@ With a little help from my friend (Copilot), I implemented the following instruc
   }
 ```
 
-I continue by implementing instructions and eventually reach $FF75 which is page 2 of the Wozmon disassembly listing from the official Apple 1 handbook and I'm guessing that half of the work is done. This took me about an hour so far. I had previous experiences with the 6502 so far, but I know how CPUs works, can understand assembler, even 6502 assembler good enough and of course, I know Dart.
+I continue by implementing instructions and eventually reach $FF75 which is page 2 of the Wozmon disassembly listing from the official Apple 1 handbook and I'm guessing that half of the work is done. This took me about an hour so far. I had no previous experiences with the 6502 so far, but I know how CPUs works, can understand assembler, even 6502 assembler, good enough, and of course, I know Dart.
 
 A bit later, I can successfully enter `200` and get back `0000: 00` which is wrong but still impressive as I can simulate enough instructions to implement one of the three modi of Wozmon: Examining a single memory location.
 
@@ -287,7 +287,7 @@ Here's the code:
         n = memory[address] & 0x80 != 0;
 ```
 
-And then it's obivous, isn't it? The `c = ...` line will overwrite the current carry flag that is needed in the next line. So this is the fix to the bug:
+It's obivous, isn't it? The `c = ...` line will overwrite the current carry flag that is needed in the next line. So this is the fix to the bug:
 
 ```dart
         final inc = c ? 1 : 0;
@@ -344,3 +344,20 @@ Next Steps
 The next step would obviously be to also make Apple Basic a.k.a. Integer Basic run, a 4 KB module that could be loaded from cassette to $E000.$EFFF and then run by entering `E000 R` in Wozmon.
 
 Instead of using the normal terminal, one could also write a tiny Flutter application to simulate a 40x24 character screen, even using the original 5x7 character set and a blinking `@` as a cursor.
+
+Basic
+-----
+In the meantime, I implemented all instructions required to run the Apple 1 Integer Basic, noticed that it will emit characters to $D0F2 instead of $D012 as specified, fixed a buggy instruction and are now able to enter lines like
+
+    PRINT 3+4
+    A=4
+    PRINT A+3
+
+and also enter lines like
+
+    10 PRINT 3+4
+    LIST
+
+but when trying to `RUN` that code, it doesn't work. I'm guessing that the interpreter tries to read from the keyboard which I implemented as a waiting instruction. At $E86F, the keyboard is tested, probably to break the running program upon ESC or something. Unfortunately, my simulator waits for a key before continuing. So the run loop will always break.
+
+Unfortunately, Dart has no non-blocking stdin mode.

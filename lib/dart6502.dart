@@ -37,22 +37,25 @@ class CPU {
     switch (memory[pc++]) {
       case 0x00: // BRK
         b = true;
+      case 0x06: // ASL zp
+        final address = memory[pc++];
+        final value = memory[address];
+        c = value & 0x80 != 0;
+        _zn(memory[address] = (value << 1) & 0xff);
       case 0x09: // ORA #nn
-        a |= memory[pc++];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a |= memory[pc++]);
       case 0x0a: // ASL A
         c = a & 0x80 != 0;
-        a = (a << 1) & 0xff;
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = (a << 1) & 0xff);
       case 0x10: // BPL rel
-        if (!n) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(!n);
+      case 0x11: // ORA (zp),Y
+        final value = memory[getWord(memory[pc++]) + y];
+        _zn(a |= value);
+      case 0x15: // ORA zp,X
+        _zn(a |= memory[(memory[pc++] + x) & 0xff]);
+      case 0x18: // CLC
+        c = false;
       case 0x20: // JSR abs
         memory[sp--] = (pc + 2) >> 8;
         memory[sp--] = (pc + 2) & 0xff;
@@ -67,65 +70,95 @@ class CPU {
         final value = memory[address];
         final inc = c ? 1 : 0;
         c = value & 0x80 != 0;
-        memory[address] = ((value << 1) | inc) & 0xff;
-        z = memory[address] == 0;
-        n = memory[address] & 0x80 != 0;
+        _zn(memory[address] = ((value << 1) | inc) & 0xff);
+      case 0x28: // PLP
+        final value = memory[++sp];
+        n = value & 0x80 != 0;
+        v = value & 0x40 != 0;
+        b = value & 0x10 != 0;
+        d = value & 0x08 != 0;
+        i = value & 0x04 != 0;
+        z = value & 0x02 != 0;
+        c = value & 0x01 != 0;
       case 0x29: // AND #nn
-        a &= memory[pc++];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a &= memory[pc++]);
+      case 0x2a: // ROL A
+        final inc = c ? 1 : 0;
+        c = a & 0x80 != 0;
+        _zn(a = ((a << 1) | inc) & 0xff);
       case 0x2c: // BIT abs
         final value = memory[getWord(pc)];
         pc += 2;
         n = value & 0x80 != 0;
         v = value & 0x40 != 0;
-        z = (value & a) == 0;
+        z = value == 0;
       case 0x30: // BMI rel
-        if (n) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(n);
+      case 0x35: // AND zp,X
+        _zn(a &= memory[(memory[pc++] + x) & 0xff]);
+      case 0x38: // SEC
+        c = true;
+      case 0x46: // LSR zp
+        final address = memory[pc++];
+        final value = memory[address];
+        c = value & 0x01 != 0;
+        _zn(memory[address] = value >> 1);
       case 0x48: // PHA
         memory[sp--] = a;
       case 0x49: // EOR #nn
-        a ^= memory[pc++];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a ^= memory[pc++]);
       case 0x4a: // LSR A
         c = a & 0x01 != 0;
-        a = a >> 1;
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = a >> 1);
       case 0x4c: // JMP abs
         pc = getWord(pc);
       case 0x50: // BVC rel
-        if (!v) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(!v);
+      case 0x56: // LSR zp,X
+        final address = memory[pc++] + x;
+        final value = memory[address];
+        c = value & 0x01 != 0;
+        _zn(memory[address] = value >> 1);
       case 0x58: // CLI
         i = false;
+      case 0x59: // EOR abs,Y
+        final address = getWord(pc) + y;
+        pc += 2;
+        _zn(a ^= memory[address]);
       case 0x60: // RTS
         pc = memory[++sp] | (memory[++sp] << 8);
+      case 0x65: // ADC zp
+        final value = memory[memory[pc++]];
+        final result = a + value + (c ? 1 : 0);
+        c = result > 0xff;
+        v = ((a ^ result) & (value ^ result) & 0x80) != 0;
+        _zn(a = result & 0xff);
       case 0x68: // PLA
-        a = memory[++sp];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = memory[++sp]);
       case 0x69: // ADC #nn
         final value = memory[pc++];
         final result = a + value + (c ? 1 : 0);
         c = result > 0xff;
         v = ((a ^ result) & (value ^ result) & 0x80) != 0;
-        a = result & 0xff;
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = result & 0xff);
       case 0x6c: // JMP (abs)
         pc = getWord(getWord(pc));
-      case 0x81: // STA (zp, X)
+      case 0x70: // BVS rel
+        _rel(v);
+      case 0x71: // ADC (zp),Y
+        final value = memory[getWord(memory[pc++]) + y];
+        final result = a + value + (c ? 1 : 0);
+        c = result > 0xff;
+        v = ((a ^ result) & (value ^ result) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0x75: // ADC zp,X
+        final address = memory[pc++] + x;
+        final value = memory[address];
+        final result = a + value + (c ? 1 : 0);
+        c = result > 0xff;
+        v = ((a ^ result) & (value ^ result) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0x81: // STA (zp,X)
         memory[getWord(memory[pc++] + x)] = a;
       case 0x84: // STY zp
         memory[memory[pc++]] = y;
@@ -134,9 +167,9 @@ class CPU {
       case 0x86: // STX zp
         memory[memory[pc++]] = x;
       case 0x88: // DEY
-        y = (y - 1) & 0xff;
-        z = y == 0;
-        n = y & 0x80 != 0;
+        _zn(y = (y - 1) & 0xff);
+      case 0x8a: // TXA
+        _zn(a = x);
       case 0x8c: // STY abs
         memory[getWord(pc)] = y;
         pc += 2;
@@ -144,118 +177,163 @@ class CPU {
         memory[getWord(pc)] = a;
         pc += 2;
       case 0x90: // BCC rel
-        if (!c) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(!c);
+      case 0x91: // STA (zp),Y
+        memory[getWord(memory[pc++]) + y] = a;
+      case 0x94: // STY zp,X
+        memory[(memory[pc++] + x) & 0xff] = y;
       case 0x95: // STA zp,X
         memory[(memory[pc++] + x) & 0xff] = a;
+      case 0x98: // TYA
+        _zn(a = y);
       case 0x99: // STA abs,Y
         memory[getWord(pc) + y] = a;
         pc += 2;
+      case 0x9a: // TXS
+        sp = x + 0x100;
+      case 0x9d: // STA abs,X
+        memory[getWord(pc) + x] = a;
+        pc += 2;
       case 0xa0: // LDY #nn
-        y = memory[pc++];
-        z = y == 0;
-        n = y & 0x80 != 0;
+        _zn(y = memory[pc++]);
       case 0xa1: // LDA (zp,X)
-        a = memory[getWord(memory[pc++]) + x];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = memory[getWord(memory[pc++] + x)]);
       case 0xa2: // LDX #nn
-        x = memory[pc++];
-        z = x == 0;
-        n = x & 0x80 != 0;
+        _zn(x = memory[pc++]);
+      case 0xa4: // LDY zp
+        _zn(y = memory[memory[pc++]]);
       case 0xa5: // LDA zp
-        a = memory[memory[pc++]];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = memory[memory[pc++]]);
+      case 0xa6: // LDX zp
+        _zn(x = memory[memory[pc++]]);
+      case 0xa8: // TAY
+        _zn(y = a);
       case 0xa9: // LDA #nn
-        a = memory[pc++];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = memory[pc++]);
       case 0xaa: // TAX
-        x = a;
-        z = x == 0;
-        n = x & 0x80 != 0;
+        _zn(x = a);
       case 0xad: // LDA abs
-        a = memory[getWord(pc)];
+        _zn(a = memory[getWord(pc)]);
         pc += 2;
-        z = a == 0;
-        n = a & 0x80 != 0;
       case 0xb0: // BCS rel
-        if (c) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(c);
+      case 0xb1: // LDA (zp),Y
+        _zn(a = memory[getWord(memory[pc++]) + y]);
+      case 0xb4: // LDY zp,X
+        _zn(y = memory[(memory[pc++] + x) & 0xff]);
       case 0xb5: // LDA zp,X
-        a = memory[(memory[pc++] + x) & 0xff];
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = memory[(memory[pc++] + x) & 0xff]);
       case 0xb9: // LDA abs,Y
-        a = memory[getWord(pc) + y];
+        _zn(a = memory[getWord(pc) + y]);
         pc += 2;
-        z = a == 0;
-        n = a & 0x80 != 0;
+      case 0xba: // TSX
+        _zn(x = sp - 0x100);
+      case 0xbd: // LDA abs,X
+        _zn(a = memory[getWord(pc) + x]);
+        pc += 2;
+      case 0xbe: // LDX abs,Y
+        _zn(x = memory[getWord(pc) + y]);
+        pc += 2;
+      case 0xc0: // CPY #nn
+        _cmp(y, memory[pc++]);
       case 0xc4: // CPY zp
-        final value = memory[memory[pc++]];
-        c = y >= value;
-        z = y == value;
-        n = (y - value) & 0x80 != 0;
+        _cmp(y, memory[memory[pc++]]);
       case 0xc5: // CMP zp
-        final value = memory[memory[pc++]];
-        c = a >= value;
-        z = a == value;
-        n = (a - value) & 0x80 != 0;
+        _cmp(a, memory[memory[pc++]]);
+      case 0xc6: // DEC zp
+        final address = memory[pc++];
+        final value = memory[address];
+        _zn(memory[address] = (value - 1) & 0xff);
       case 0xc8: // INY
-        y = (y + 1) & 0xff;
-        z = y == 0;
-        n = y & 0x80 != 0;
+        _zn(y = (y + 1) & 0xff);
       case 0xc9: // CMP #nn
-        final nn = memory[pc++];
-        c = a >= nn;
-        z = a == nn;
-        n = (a - nn) & 0x80 != 0;
+        _cmp(a, memory[pc++]);
       case 0xca: // DEX
-        x = (x - 1) & 0xff;
-        z = x == 0;
-        n = x & 0x80 != 0;
+        _zn(x = (x - 1) & 0xff);
       case 0xd0: // BNE rel
-        if (!z) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(!z);
+      case 0xd1: // CMP (zp),Y
+        _cmp(a, memory[getWord(memory[pc++]) + y]);
+      case 0xd5: // CMP zp,X
+        _cmp(a, memory[(memory[pc++] + x) & 0xff]);
       case 0xd8: // CLD
         d = false;
+      case 0xd9: // CMP abs,Y
+        _cmp(a, memory[getWord(pc) + y]);
+        pc += 2;
+      case 0xdd: // CMP abs,X
+        _cmp(a, memory[getWord(pc) + x]);
+        pc += 2;
+      case 0xe0: // CPX #nn
+        _cmp(x, memory[pc++]);
       case 0xe5: // SBC zp
         final value = memory[memory[pc++]];
         final result = a - value - (c ? 0 : 1);
         c = result >= 0;
         v = ((a ^ result) & (a ^ value) & 0x80) != 0;
-        a = result & 0xff;
-        z = a == 0;
-        n = a & 0x80 != 0;
+        _zn(a = result & 0xff);
       case 0xe6: // INC zp
         final address = memory[pc++];
         final value = memory[address];
-        memory[address] = (value + 1) & 0xff;
-        z = memory[address] == 0;
-        n = memory[address] & 0x80 != 0;
+        _zn(memory[address] = (value + 1) & 0xff);
+      case 0xe8: // INX
+        _zn(x = (x + 1) & 0xff);
+      case 0xe9: // SBC #nn
+        final value = memory[pc++];
+        final result = a - value - (c ? 0 : 1);
+        c = result >= 0;
+        v = ((a ^ result) & (a ^ value) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0xea: // NOP
+        break;
       case 0xf0: // BEQ rel
-        if (z) {
-          final offset = memory[pc++];
-          pc += offset < 0x80 ? offset : offset - 0x100;
-        } else {
-          pc++;
-        }
+        _rel(z);
+      case 0xf1: // SBC (zp),Y
+        final value = memory[getWord(memory[pc++]) + y];
+        final result = a - value - (c ? 0 : 1);
+        c = result >= 0;
+        v = ((a ^ result) & (a ^ value) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0xf5: // SBC zp,X
+        final value = memory[(memory[pc++] + x) & 0xff];
+        final result = a - value - (c ? 0 : 1);
+        c = result >= 0;
+        v = ((a ^ result) & (a ^ value) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0xf6: // INC zp,X
+        final address = (memory[pc++] + x) & 0xff;
+        final value = memory[address];
+        _zn(memory[address] = (value + 1) & 0xff);
+      case 0xfd: // SBC abs,X
+        final value = memory[getWord(pc) + x];
+        pc += 2;
+        final result = a - value - (c ? 0 : 1);
+        c = result >= 0;
+        v = ((a ^ result) & (a ^ value) & 0x80) != 0;
+        _zn(a = result & 0xff);
       default:
         throw UnimplementedError('opcode ${memory[--pc].toHex(2)} at ${pc.toHex(4)} not implemented');
     }
+  }
+
+  void _zn(int value) {
+    z = value == 0;
+    n = value & 0x80 != 0;
+  }
+
+  void _rel(bool f) {
+    if (f) {
+      final offset = memory[pc++];
+      pc += offset < 0x80 ? offset : offset - 0x100;
+    } else {
+      pc++;
+    }
+  }
+
+  void _cmp(int value, int other) {
+    c = value >= other;
+    z = value == other;
+    n = (value - other) & 0x80 != 0;
   }
 
   void loadHex(String hex) {
@@ -283,6 +361,7 @@ class Memory {
   void operator []=(int address, int value) {
     switch (address) {
       case 0xd012: // display output
+      case 0xd0f2: // display output
         final ch = value & 0x7f;
         stdout.writeCharCode(ch == 13 ? 10 : ch);
       default:
