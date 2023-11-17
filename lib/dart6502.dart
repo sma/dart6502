@@ -143,6 +143,19 @@ class CPU {
         _zn(a = result & 0xff);
       case 0x6c: // JMP (abs)
         pc = getWord(getWord(pc));
+      case 0x6d: // ADC abs
+        final value = memory[getWord(pc)];
+        pc += 2;
+        final result = a + value + (c ? 1 : 0);
+        c = result > 0xff;
+        v = ((a ^ result) & (value ^ result) & 0x80) != 0;
+        _zn(a = result & 0xff);
+      case 0x6e: // ROR zp
+        final address = memory[pc++];
+        final value = memory[address];
+        final inc = c ? 0x80 : 0;
+        c = value & 0x01 != 0;
+        _zn(memory[address] = ((value >> 1) | inc) & 0xff);
       case 0x70: // BVS rel
         _rel(v);
       case 0x71: // ADC (zp),Y
@@ -367,6 +380,10 @@ class Memory {
       default:
         _data[address] = value;
     }
+  }
+
+  void load(int address, Iterable<int> data) {
+    _data.setRange(address, address + data.length, data);
   }
 
   final _data = List.filled(65536, 0);
